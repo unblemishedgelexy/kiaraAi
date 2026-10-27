@@ -8,6 +8,8 @@ This standalone Vite app lives beside `Kiara-ai` and `kiara-server`.
 2. From this folder run `npm install`, then `npm run dev` (port 5174).
 3. Open `http://localhost:5174/` for the public site. Open `http://localhost:5174/admin` directly for administration; the public homepage does not link to it.
 
+For Netlify, set the publish directory to `dist` and the build command to `npm run build`. The `public/_redirects` rule is copied into the build output so direct routes such as `/admin` load the single-page app instead of showing Netlify's 404 page.
+
 The public site is responsive on mobile and desktop. The `/admin` sign-in is visible to everyone and uses a separate admin email/password endpoint; the normal user login is not used by the website admin panel. The sign-in screen also has a first-admin registration option. It does not send an auth token or registration key; the server only accepts it while the `admins` collection is empty. Only active accounts with the `admin` or `dev` role can enter:
 
 - `admin` can manage dashboard data, users, website content, support, and app releases.
