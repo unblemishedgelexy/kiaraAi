@@ -1,8 +1,92 @@
-import { useCallback, useEffect, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useState, type FormEvent, type ReactNode } from 'react';
+import { BrowserRouter, Link, MemoryRouter, NavLink, Route, Routes, useLocation } from 'react-router-dom';
+import { CommunicationSection, ConversationExample, HowItWorksSection, TrustSection, verifiedCapabilities } from './components/marketing/EditorialSections';
+import { LegalDocumentContent } from './components/public/LegalDocumentContent';
+import { getPageMetadata, getStructuredData } from './seo';
 
 const API_BASE = (import.meta.env.VITE_API_BASE_URL ?? '').replace(/\/+$/, '');
-const heroImage = '/images/kiara_landing.png';
+const heroImage = '/images/kiara_landing.webp';
 const ACCESS_TOKEN_KEY = 'kiara_admin_access_token';
+
+type ThemeMode = 'dark' | 'light';
+
+function getPreferredTheme(): ThemeMode {
+  if (typeof window === 'undefined') return 'dark';
+
+  try {
+    const stored = localStorage.getItem('kiara-theme');
+    if (stored === 'dark' || stored === 'light') return stored;
+  } catch {
+    // ignore storage access issues
+  }
+
+  return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+}
+
+function applyTheme(theme: ThemeMode) {
+  document.documentElement.dataset.theme = theme;
+  document.documentElement.style.colorScheme = theme;
+  try {
+    localStorage.setItem('kiara-theme', theme);
+  } catch {
+    // ignore storage access issues
+  }
+}
+
+function ThemeToggle() {
+  const [theme, setTheme] = useState<ThemeMode>(() => getPreferredTheme());
+
+  useEffect(() => {
+    applyTheme(theme);
+  }, [theme]);
+
+  return (
+    <button
+      type="button"
+      className="theme-toggle"
+      aria-label={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+      aria-pressed={theme === 'dark'}
+      onClick={() => setTheme((current) => (current === 'dark' ? 'light' : 'dark'))}
+    >
+      <span aria-hidden="true">{theme === 'dark' ? '☀' : '☾'}</span>
+      {theme === 'dark' ? 'Light' : 'Dark'}
+    </button>
+  );
+}
+
+function setDocumentMeta(key: string, value: string, asProperty = false) {
+  const attributeName = asProperty ? 'property' : 'name';
+  let element = document.head.querySelector(`meta[${attributeName}="${key}"]`);
+  if (!element) {
+    element = document.createElement('meta');
+    element.setAttribute(attributeName, key);
+    document.head.appendChild(element);
+  }
+  element.setAttribute('content', value);
+}
+
+function seoMeta(path: string) {
+  const { title, description } = getPageMetadata(path);
+  const canonicalUrl = `https://kiaraai.in${path}`;
+  document.title = title;
+  setDocumentMeta('description', description);
+  setDocumentMeta('robots', 'index,follow,max-image-preview:large');
+  const canonical = document.head.querySelector('link[rel="canonical"]') ?? document.createElement('link');
+  canonical.setAttribute('rel', 'canonical');
+  canonical.setAttribute('href', canonicalUrl);
+  if (!canonical.parentNode) document.head.appendChild(canonical);
+  setDocumentMeta('og:title', title, true);
+  setDocumentMeta('og:description', description, true);
+  setDocumentMeta('og:url', canonicalUrl, true);
+  setDocumentMeta('og:type', 'website', true);
+  setDocumentMeta('og:site_name', 'Kiara AI', true);
+  setDocumentMeta('og:image', 'https://kiaraai.in/images/kiara_landing.webp', true);
+  setDocumentMeta('og:image:alt', 'Kiara AI companion artwork', true);
+  setDocumentMeta('twitter:card', 'summary_large_image');
+  setDocumentMeta('twitter:title', title);
+  setDocumentMeta('twitter:description', description);
+  setDocumentMeta('twitter:image', 'https://kiaraai.in/images/kiara_landing.webp');
+}
 
 type ApkUploadProgress =
   | { stage: 'transferring'; percentage: number }
@@ -82,9 +166,9 @@ type AppPerformance = {
 const defaults: WebsiteContent = {
   announcement: '',
   heroEyebrow: 'YOUR AI COMPANION',
-  heroTitle: 'A little closer to the future.',
-  heroDescription: 'Meet Kiara — a thoughtful AI companion who listens, remembers, and grows with you.',
-  features: ['Natural voice and chat', 'A companion that remembers', 'Your own expressive 3D avatar'],
+  heroTitle: 'A thoughtful companion for real conversations.',
+  heroDescription: 'Meet Kiara, an Android AI companion for everyday conversations, clearer expression, and personal reflection.',
+  features: ['Voice and text conversations', 'Context-aware memory', 'An expressive 3D avatar'],
   apkAvailable: false,
   apkDownloadUrl: null,
   apkOriginalName: null,
@@ -93,6 +177,37 @@ const defaults: WebsiteContent = {
   apkMaxSizeBytes: 25 * 1024 * 1024,
   apkStorageConfigured: true,
 };
+
+function useWebsiteContent() {
+  const [content, setContent] = useState(defaults);
+  const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading');
+
+  useEffect(() => {
+    const controller = new AbortController();
+    let active = true;
+    const timeoutId = window.setTimeout(() => controller.abort(), 30000);
+
+    void request<WebsiteContent>('/site/content', { signal: controller.signal })
+      .then((result) => {
+        if (active) {
+          setContent(result);
+          setStatus('ready');
+        }
+      })
+      .catch(() => {
+        if (active) setStatus('error');
+      })
+      .finally(() => window.clearTimeout(timeoutId));
+
+    return () => {
+      active = false;
+      window.clearTimeout(timeoutId);
+      controller.abort();
+    };
+  }, []);
+
+  return { content, status };
+}
 
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   const token = localStorage.getItem(ACCESS_TOKEN_KEY);
@@ -165,34 +280,88 @@ function getApkDownloadHref(content: WebsiteContent): string | null {
 }
 
 function Brand({ light = false }: { light?: boolean }) {
-  return <a className={`brand${light ? ' brand-light' : ''}`} href="/" aria-label="Kiara AI home">
+  return <Link className={`brand${light ? ' brand-light' : ''}`} to="/" aria-label="Kiara AI home">
     <img className="brand-symbol" src="/images/kiara-logo.svg" alt="" />
     <span>kiara<span className="brand-dot">.</span></span>
-  </a>;
+  </Link>;
+}
+
+function PageMeta({ path }: { path: string }) {
+  useEffect(() => {
+    seoMeta(path);
+  }, [path]);
+
+  return null;
+}
+
+function PublicHeader() {
+  const [menuOpen, setMenuOpen] = useState(false);
+
+  return <header className="site-header">
+    <Brand />
+    <div className={`site-header__actions ${menuOpen ? 'open' : ''}`}>
+      <nav className="site-nav" aria-label="Main navigation">
+        <NavLink className={({ isActive }) => `site-nav__link${isActive ? ' active' : ''}`} to="/" end onClick={() => setMenuOpen(false)}>Home</NavLink>
+        <NavLink className={({ isActive }) => `site-nav__link${isActive ? ' active' : ''}`} to="/features" onClick={() => setMenuOpen(false)}>Features</NavLink>
+        <NavLink className={({ isActive }) => `site-nav__link${isActive ? ' active' : ''}`} to="/download" onClick={() => setMenuOpen(false)}>Download</NavLink>
+        <NavLink className={({ isActive }) => `site-nav__link${isActive ? ' active' : ''}`} to="/about" onClick={() => setMenuOpen(false)}>About</NavLink>
+        <NavLink className={({ isActive }) => `site-nav__link${isActive ? ' active' : ''}`} to="/docs" onClick={() => setMenuOpen(false)}>Docs</NavLink>
+        <NavLink className={({ isActive }) => `site-nav__link${isActive ? ' active' : ''}`} to="/faq" onClick={() => setMenuOpen(false)}>FAQ</NavLink>
+      </nav>
+      <div className="site-header__tools">
+        <ThemeToggle />
+        <Link className="nav-cta" to="/download">Get Kiara <span>↗</span></Link>
+      </div>
+    </div>
+    <button
+      type="button"
+      className="mobile-menu-toggle"
+      aria-label={menuOpen ? 'Close navigation menu' : 'Open navigation menu'}
+      aria-expanded={menuOpen}
+      onClick={() => setMenuOpen((open) => !open)}
+    >
+      <span />
+      <span />
+      <span />
+    </button>
+  </header>;
+}
+
+function PublicLayout({ path, children }: { path: string; children: ReactNode }) {
+  const structuredData = getStructuredData(path);
+
+  return <>
+    <PageMeta path={path} />
+    <main className="landing">{children}</main>
+    {structuredData && <script
+      type="application/ld+json"
+      dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData).replace(/</g, '\\u003c') }}
+    />}
+    <footer className="site-footer">
+      <Brand light />
+      <div className="footer-links">
+        <Link to="/features">Features</Link>
+        <Link to="/download">Download</Link>
+        <Link to="/about">About</Link>
+        <Link to="/docs">Docs</Link>
+        <Link to="/faq">FAQ</Link>
+        <Link to="/privacy">Privacy</Link>
+        <Link to="/terms">Terms</Link>
+        <Link to="/contact">Contact</Link>
+      </div>
+      <span>© {new Date().getFullYear()} Kiara AI.</span>
+    </footer>
+  </>;
 }
 
 function HomePage() {
-  const [content, setContent] = useState(defaults);
-  const [loadError, setLoadError] = useState('');
+  const { content, status } = useWebsiteContent();
   const apkDownloadHref = getApkDownloadHref(content);
+  const releaseAvailable = status === 'ready' && content.apkAvailable && Boolean(apkDownloadHref);
 
-  useEffect(() => {
-    void request<WebsiteContent>('/site/content')
-      .then(setContent)
-      .catch((error: unknown) => setLoadError(error instanceof Error ? error.message : 'Could not load Kiara details.'));
-  }, []);
-
-  return <main className="landing">
+  return <PublicLayout path="/">
     {content.announcement && <div className="announcement">{content.announcement}</div>}
-    <header className="site-header">
-      <Brand />
-      <nav className="site-nav" aria-label="Main navigation">
-        <a href="#experience">The experience</a>
-        <a href="#features">Why Kiara</a>
-        <a href="#about">About</a>
-      </nav>
-      <a className="nav-cta" href="#experience">Meet Kiara <span>↗</span></a>
-    </header>
+    <PublicHeader />
     <p className="header-blessing">श्री गणेशाय नमः</p>
 
     <section className="hero" id="experience">
@@ -200,76 +369,253 @@ function HomePage() {
         <p className="eyebrow"><span className="eyebrow-line" />{content.heroEyebrow}</p>
         <h1>{content.heroTitle.split(' ').slice(0, -2).join(' ')} <em>{content.heroTitle.split(' ').slice(-2).join(' ')}</em></h1>
         <p className="hero-description">{content.heroDescription}</p>
+        <p className="hero-purpose">An Android AI companion for clearer communication, everyday reflection, and personal growth.</p>
         <div className="hero-actions">
-          <a className="button button-primary" href={content.apkAvailable && apkDownloadHref ? apkDownloadHref : '#features'}>
-            {content.apkAvailable ? 'Download Kiara for Android' : 'Discover Kiara'} <span>↗</span>
-          </a>
-          <a className="button button-quiet" href="#features"><span className="play-icon">▶</span> Explore the experience</a>
+          <Link className="button button-primary" to="/download">
+            {releaseAvailable ? 'Download for Android' : 'Check Android availability'} <span>↗</span>
+          </Link>
+          <Link className="button button-quiet" to="/about">Why Kiara exists <span aria-hidden="true">↗</span></Link>
         </div>
-        {loadError && <p className="inline-error">{loadError}</p>}
-        <div className="hero-note"><span className="online-dot" /> Made for meaningful moments <span className="note-divider" /> Thoughtfully designed, always evolving</div>
+        {status === 'error' && <p className="inline-error" role="status">Release availability could not be checked. The download page will show the current status when it is available.</p>}
+        <div className="hero-note">Text or live voice <span className="note-divider" aria-hidden="true" /> Android companion</div>
       </div>
       <div className="hero-art">
         <div className="art-glow" />
         <div className="art-frame">
-          <img src={heroImage} alt="Kiara, your virtual AI companion" />
+          <img src={heroImage} alt="Kiara AI companion illustration" />
           <div className="image-caption"><span className="caption-spark">✦</span><span><strong>Meet Kiara</strong><small>Your thoughtful AI companion</small></span><span className="caption-arrow">↗</span></div>
         </div>
-        <div className="orbit orbit-one" /><div className="orbit orbit-two" />
-        <div className="floating-chip chip-memory"><span>✦</span> She remembers what matters</div>
-        <div className="floating-chip chip-voice"><span className="wave">〰</span> A voice that feels close</div>
       </div>
-      <div className="hero-bottom"><span>01 — 03</span><span>SCROLL TO EXPLORE</span><span className="scroll-line" /></div>
     </section>
 
     <section className="intro-strip" id="about">
       <div className="intro-mark">K.</div>
-      <p>Not just another assistant.<br /><strong>A presence that grows with you.</strong></p>
-      <span className="intro-caption">A new kind of connection, designed around you.</span>
+      <p>Technology for human connection.<br /><strong>Not a replacement for it.</strong></p>
+      <span className="intro-caption">A companion to support your real life.</span>
     </section>
+
+    <CommunicationSection />
 
     <section className="feature-section" id="features">
       <div className="section-heading">
-        <div><p className="eyebrow"><span className="eyebrow-line" /> A MORE HUMAN KIND OF AI</p><h2>Technology, with<br /><em>a little more heart.</em></h2></div>
-        <p className="section-description">Kiara brings conversation, memory, and presence together in one personal experience. A companion that feels natural from the very first hello.</p>
+        <div><p className="eyebrow"><span className="eyebrow-line" /> WHAT THE APP INCLUDES</p><h2>A familiar way<br /><em>to talk things through.</em></h2></div>
+        <p className="section-description">The Android app includes text and live voice conversation, context memory, and a 3D companion avatar. Feature availability can depend on connection, permissions, and service configuration.</p>
       </div>
       <div className="feature-grid">
         {content.features.map((feature, index) => <article className={`feature-card feature-${index + 1}`} key={feature}>
           <span className="feature-number">0{index + 1}</span><span className="feature-symbol">{['◉', '✧', '◌'][index] || '✦'}</span>
           <h3>{feature}</h3>
           <p>{[
-            'Talk naturally, type when you want, and let the conversation find its own rhythm.',
-            'Kiara keeps the details that make your conversations feel personal and connected.',
-            'An expressive, living avatar brings a little more presence to every moment.',
+            'Choose typed messages or a live voice conversation in the Android app.',
+            'The app includes local and server-backed memory code for relevant context.',
+            'The Android experience renders an animated 3D avatar during conversation.',
           ][index]}</p>
-          <span className="feature-link">Designed around you <b>↗</b></span>
+          <Link className="feature-link" to="/features">How it works <b aria-hidden="true">↗</b></Link>
         </article>)}
       </div>
     </section>
 
+    <HowItWorksSection />
+    <ConversationExample />
+    <TrustSection />
+
     <section className="download-banner">
-      <div><p className="eyebrow"><span className="eyebrow-line" /> YOUR NEXT CHAPTER</p><h2>Make room for<br /><em>something meaningful.</em></h2></div>
-      <div className="download-action"><p>Start a conversation with Kiara. Your next favorite moment could be one hello away.</p><a className="button button-primary" href={content.apkAvailable && apkDownloadHref ? apkDownloadHref : '#experience'}>{content.apkAvailable ? 'Download Kiara for Android' : 'Explore Kiara'} <span>↗</span></a>{content.apkAvailable && <small className="apk-caption">{content.apkOriginalName} · {formatBytes(content.apkSize)}</small>}</div>
+      <div><p className="eyebrow"><span className="eyebrow-line" /> ANDROID APP</p><h2>Take the conversation<br /><em>with you.</em></h2></div>
+      <div className="download-action">
+        <p>Check whether an Android release is currently published, then review the install steps and product limits.</p>
+        <Link className="button button-primary" to="/download">{releaseAvailable ? 'View the Android release' : 'Check release availability'} <span aria-hidden="true">↗</span></Link>
+        {releaseAvailable && <small className="apk-caption">{content.apkOriginalName} · {formatBytes(content.apkSize)}</small>}
+      </div>
     </section>
-    <footer className="site-footer"><Brand light /><span>© {new Date().getFullYear()} Kiara AI. Created for connection.</span></footer>
-  </main>;
+  </PublicLayout>;
+}
+
+function FeaturesPage() {
+  return <PublicLayout path="/features">
+    <PublicHeader />
+    <section className="page-shell">
+      <div className="page-header">
+        <p className="eyebrow"><span className="eyebrow-line" /> WHAT IS IN THE ANDROID APP</p>
+        <h1>Useful tools for an honest conversation.</h1>
+        <p className="page-lead">These capabilities have corresponding code paths in the available Android app and server projects. Their runtime availability still depends on permissions, network access, and configured services.</p>
+      </div>
+      <div className="content-grid two-up">
+        {verifiedCapabilities.map((capability) => <article className="info-card capability-card" key={capability.title}>
+          <span className="feature-symbol" aria-hidden="true">{capability.symbol}</span>
+          <h2>{capability.title}</h2>
+          <p>{capability.description}</p>
+          <p className="capability-example"><strong>For example:</strong> {capability.example}</p>
+        </article>)}
+      </div>
+      <div className="product-note">
+        <h2>What Kiara does not claim</h2>
+        <p>Photo sharing is an optional way to add context. It is not a reliable system for reading body language, diagnosing emotions, or knowing what another person truly thinks. Kiara is also not a therapist or a substitute for professional care.</p>
+        <Link className="inline-link" to="/docs">Read the getting-started guide <span aria-hidden="true">↗</span></Link>
+      </div>
+    </section>
+  </PublicLayout>;
+}
+
+function DownloadPage() {
+  const { content, status } = useWebsiteContent();
+  const apkDownloadHref = getApkDownloadHref(content);
+
+  return <PublicLayout path="/download">
+    <PublicHeader />
+    <section className="page-shell">
+      <div className="page-header narrow">
+        <p className="eyebrow"><span className="eyebrow-line" /> DOWNLOAD</p>
+        <h1>Check the Android release.</h1>
+        <p className="page-lead">Kiara's available client in this workspace is an Android app. This page checks the public release service before showing a download action.</p>
+      </div>
+      <div className="download-panel">
+        <div>
+          <p className="mini-label">Release status</p>
+          <h2>{status === 'loading' ? 'Checking availability…' : status === 'error' ? 'Status unavailable' : content.apkAvailable && apkDownloadHref ? 'Android release available' : 'No release published'}</h2>
+          <p>
+            {status === 'loading' && 'Checking the current public release record. No download link will appear until the release service confirms one.'}
+            {status === 'error' && 'We could not verify the release right now. Please try again later; we will not show an unverified download link.'}
+            {status === 'ready' && content.apkAvailable && apkDownloadHref && 'The release service reports a published Android package. Review the install steps and Android version before downloading.'}
+            {status === 'ready' && (!content.apkAvailable || !apkDownloadHref) && 'There is no Android package available from the release service right now. Please check back later.'}
+          </p>
+        </div>
+        {status === 'ready' && content.apkAvailable && apkDownloadHref && <div className="download-cta-box">
+          <strong>{content.apkOriginalName || 'Kiara Android APK'}</strong>
+          <p>{formatBytes(content.apkSize)}{content.apkUploadedAt ? ` · Published ${formatDate(content.apkUploadedAt)}` : ''}</p>
+          <a className="button button-primary" href={apkDownloadHref}>Download the published APK <span aria-hidden="true">↗</span></a>
+        </div>}
+      </div>
+      <div className="content-grid two-up">
+        <article className="info-card"><h2>Minimum Android version</h2><p>The app build sets Android API 24 as its minimum (Android 7.0). This is the configured software minimum, not a guarantee of performance on every device.</p></article>
+        <article className="info-card"><h2>Install the APK</h2><ol className="check-list"><li>Download only from the release link shown above.</li><li>Open the downloaded APK and follow Android's prompts. Android may ask you to allow installs from the app you used to download it.</li><li>Open Kiara, create or sign in to an account, and grant microphone or camera access only when you choose a feature that needs it.</li></ol></article>
+        <article className="info-card"><h2>Before you install</h2><p>The app requires an internet connection for account and AI services. Review the <Link className="inline-link" to="/privacy">privacy draft</Link> and <Link className="inline-link" to="/terms">terms draft</Link> first; both contain items that still need confirmation.</p></article>
+        <article className="info-card"><h2>Release details</h2><p>The website publishing flow exposes the APK name, size, and upload date, but does not publish release notes, a checksum, or signature-verification instructions. A Windows desktop download or app-store listing was not verified.</p></article>
+      </div>
+    </section>
+  </PublicLayout>;
+}
+
+function AboutPage() {
+  return <PublicLayout path="/about">
+    <PublicHeader />
+    <section className="page-shell">
+      <div className="page-header narrow">
+        <p className="eyebrow"><span className="eyebrow-line" /> WHY KIARA EXISTS</p>
+        <h1>More understanding.<br /><em>More human connection.</em></h1>
+        <p className="page-lead">Kiara is an AI companion for people who want space to talk, find their words, and reflect on everyday life - without being talked down to.</p>
+      </div>
+      <div className="content-grid two-up">
+        <article className="info-card"><h2>Communication, not a lecture</h2><p>The goal is a warm, natural conversation that can help you consider what you want to say, understand how a moment felt to you, and decide what fits your values.</p></article>
+        <article className="info-card"><h2>Growth on your terms</h2><p>Kiara can be a place to reflect on confidence, habits, or personal goals. It should support your own judgment and relationships, never replace them or encourage dependence.</p></article>
+        <article className="info-card"><h2>What exists today</h2><p>The available client project builds an Android app with text and live voice conversation, context-memory code, an animated 3D avatar, and optional photo/file context flows.</p></article>
+        <article className="info-card"><h2>What remains unverified</h2><p>Dedicated communication coaching, reliable body-language interpretation, mood diagnosis, and a Windows desktop product are not verified as complete user-facing features. We do not advertise them as available.</p></article>
+      </div>
+      <p className="product-note">Kiara is an AI companion, not a mental-health professional or emergency service. AI responses can be wrong or miss important context.</p>
+    </section>
+  </PublicLayout>;
+}
+
+function DocsPage() {
+  return <PublicLayout path="/docs">
+    <PublicHeader />
+    <section className="page-shell">
+      <div className="page-header narrow">
+        <p className="eyebrow"><span className="eyebrow-line" /> GETTING STARTED</p>
+        <h1>Your first conversation, step by step.</h1>
+        <p className="page-lead">The app project targets Android 7.0 (API 24) and later. Download availability is checked separately, so start at the release page.</p>
+      </div>
+      <div className="content-grid three-up">
+        <article className="info-card"><span className="feature-number">01 / INSTALL</span><h2>Get the current release</h2><p>Check the release status first. If an APK is published, download it from the official link and follow the Android installation prompts.</p><Link className="inline-link" to="/download">Check Android availability <span aria-hidden="true">↗</span></Link></article>
+        <article className="info-card"><span className="feature-number">02 / SIGN IN</span><h2>Create or access your account</h2><p>The app contains regular-user sign-in and registration flows. This website's separate admin sign-in is not for normal Kiara accounts.</p></article>
+        <article className="info-card"><span className="feature-number">03 / TALK</span><h2>Choose text or voice</h2><p>Start by typing. For live voice, allow microphone access when Android asks. You can continue with follow-up messages in the conversation.</p></article>
+        <article className="info-card"><span className="feature-number">04 / SHARE</span><h2>Add optional context</h2><p>The app includes camera-photo and file-attachment flows. Choose what to share; do not include another person's sensitive information without permission.</p></article>
+        <article className="info-card"><span className="feature-number">05 / MANAGE</span><h2>Review memory and account controls</h2><p>Settings in the app include memory-wipe and account-deletion request flows. Review the current privacy draft to understand the unresolved retention and provider questions.</p><Link className="inline-link" to="/privacy">Read privacy draft <span aria-hidden="true">↗</span></Link></article>
+        <article className="info-card"><span className="feature-number">06 / REMEMBER</span><h2>Keep your own judgment</h2><p>Kiara can misunderstand a situation. Use its responses as a perspective to consider, not a verdict about you or another person.</p></article>
+      </div>
+    </section>
+  </PublicLayout>;
+}
+
+function FaqPage() {
+  return <PublicLayout path="/faq">
+    <PublicHeader />
+    <section className="page-shell faq-shell">
+      <div className="page-header narrow">
+        <p className="eyebrow"><span className="eyebrow-line" /> FAQ</p>
+        <h1>Clear answers before you begin.</h1>
+      </div>
+      <div className="faq-list">
+        <details className="info-card faq-item"><summary>What is Kiara?</summary><p>Kiara is an Android AI companion intended to support everyday conversation, clearer self-expression, and personal reflection. The product goal is to feel like a thoughtful friend, not a lecturer.</p></details>
+        <details className="info-card faq-item"><summary>What can the app do today?</summary><p>The codebase includes typed and live voice conversation, memory systems, a 3D animated avatar, and optional photo/file attachment paths. Actual service availability can depend on connection, permissions, and backend configuration.</p></details>
+        <details className="info-card faq-item"><summary>Which platforms are supported?</summary><p>The available app project is an Android Capacitor app with Android API 24 (Android 7.0) configured as its minimum. No complete Windows desktop release was verified in the available app project.</p></details>
+        <details className="info-card faq-item"><summary>Can Kiara read body language or tell what someone feels?</summary><p>No such reliable capability is verified. The app can let you add a photo as context, but do not use Kiara as a way to infer someone's thoughts, diagnose a mood, or establish their intentions.</p></details>
+        <details className="info-card faq-item"><summary>Is Kiara a therapist or mental-health service?</summary><p>No. Kiara can be used to talk through everyday situations, but it is not professional mental-health care, medical advice, or an emergency service. AI can be inaccurate or miss context.</p></details>
+        <details className="info-card faq-item"><summary>How does Kiara handle my information?</summary><p>The supplied Privacy Policy is a draft and explicitly leaves AI providers, storage locations, retention periods, and security details for confirmation. Read the full draft before sharing sensitive information; do not treat it as an approved final policy.</p><Link className="inline-link" to="/privacy">Read the full privacy draft <span aria-hidden="true">↗</span></Link></details>
+        <details className="info-card faq-item"><summary>Can I delete memory or request account deletion?</summary><p>The Android app includes settings flows to wipe saved memory and request account deletion. The separate public deletion document is also marked as a draft and says the operational process needs confirmation.</p></details>
+        <details className="info-card faq-item"><summary>Is an APK available now?</summary><p>Availability is checked against the public release service on the <Link className="inline-link" to="/download">download page</Link>. If the check fails or no package is published, the site will not show a download button.</p></details>
+        <details className="info-card faq-item"><summary>Where can I get help?</summary><p>The legal drafts list <a href="mailto:unblemishedgelexy@gmail.com">unblemishedgelexy@gmail.com</a>, but mailbox monitoring and support availability have not been independently verified. Do not send passwords, verification codes, or unnecessary sensitive information.</p></details>
+        <details className="info-card faq-item"><summary>Who can use Kiara?</summary><p>The supplied Terms draft says Kiara is intended for people aged 18 or older. The draft itself still requires publication review.</p><Link className="inline-link" to="/terms">Read the full terms draft <span aria-hidden="true">↗</span></Link></details>
+      </div>
+    </section>
+  </PublicLayout>;
+}
+
+function PolicyPage() {
+  return <PublicLayout path="/privacy">
+    <PublicHeader />
+    <section className="page-shell legal-shell">
+      <div className="page-header narrow">
+        <p className="eyebrow"><span className="eyebrow-line" /> SOURCE DOCUMENT / REVIEW REQUIRED</p>
+        <h1>Privacy Policy draft.</h1>
+        <p className="page-lead">This is the full document supplied with the Android app. It is reproduced without rewriting; the source itself marks provider, storage, retention, and safeguards for confirmation.</p>
+      </div>
+      <LegalDocumentContent documentName="privacy" />
+      <p className="legal-source-link">Source document: <a href="/legal/privacy.html">open the original HTML</a>.</p>
+    </section>
+  </PublicLayout>;
+}
+
+function TermsPage() {
+  return <PublicLayout path="/terms">
+    <PublicHeader />
+    <section className="page-shell legal-shell">
+      <div className="page-header narrow">
+        <p className="eyebrow"><span className="eyebrow-line" /> SOURCE DOCUMENT / REVIEW REQUIRED</p>
+        <h1>Terms &amp; Conditions draft.</h1>
+        <p className="page-lead">This is the full document supplied with the Android app. It is reproduced without rewriting; the source itself calls for legal and product review.</p>
+      </div>
+      <LegalDocumentContent documentName="terms" />
+      <p className="legal-source-link">Source document: <a href="/legal/terms.html">open the original HTML</a>.</p>
+    </section>
+  </PublicLayout>;
+}
+
+function ContactPage() {
+  return <PublicLayout path="/contact">
+    <PublicHeader />
+    <section className="page-shell legal-shell">
+      <div className="page-header narrow">
+        <p className="eyebrow"><span className="eyebrow-line" /> CONTACT</p>
+        <h1>Contact and support.</h1>
+      </div>
+      <div className="info-card legal-card">
+        <p>The supplied Privacy Policy and Terms drafts list <a href="mailto:unblemishedgelexy@gmail.com">unblemishedgelexy@gmail.com</a> for questions. The documents also say the responsible contact and request-handling process still need confirmation, so mailbox monitoring and response times are not verified here.</p>
+        <p>Please do not email passwords, sign-in codes, or unnecessary sensitive information. For product basics, see the <Link to="/docs">getting-started guide</Link>, <Link to="/faq">FAQ</Link>, and the full <Link to="/privacy">privacy draft</Link>.</p>
+      </div>
+    </section>
+  </PublicLayout>;
 }
 
 type AdminSection = 'overview' | 'users' | 'subscriptions' | 'feedback' | 'helpdesk' | 'performance' | 'content';
 
-function AdminLogin({ onLogin, onRegister, initialError, darkMode, onToggleTheme }: {
+function AdminLogin({ onLogin, initialError, darkMode, onToggleTheme }: {
   onLogin: (email: string, password: string) => Promise<void>;
-  onRegister: (firstName: string, lastName: string, email: string, password: string) => Promise<void>;
   initialError: string;
   darkMode: boolean;
   onToggleTheme: () => void;
 }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(initialError);
-  const [notice, setNotice] = useState('');
-  const [registering, setRegistering] = useState(false);
-  const [firstName, setFirstName] = useState('');
-  const [lastName, setLastName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -280,18 +626,10 @@ function AdminLogin({ onLogin, onRegister, initialError, darkMode, onToggleTheme
     event.preventDefault();
     setBusy(true);
     setError('');
-    setNotice('');
     try {
-      if (registering) {
-        await onRegister(firstName, lastName, email, password);
-        setPassword('');
-        setRegistering(false);
-        setNotice('First admin account created. Sign in with your new credentials.');
-      } else {
-        await onLogin(email, password);
-      }
+      await onLogin(email, password);
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : registering ? 'Admin registration failed.' : 'Sign-in failed.');
+      setError(cause instanceof Error ? cause.message : 'Sign-in failed.');
     } finally {
       setBusy(false);
     }
@@ -299,7 +637,7 @@ function AdminLogin({ onLogin, onRegister, initialError, darkMode, onToggleTheme
 
   return <main className="login-screen" data-theme={darkMode ? 'dark' : 'light'}>
     <div className="login-art">
-      <img className="login-art-image" src="/images/admin-login.png" alt="Kiara at her desk" />
+      <img className="login-art-image" src="/images/admin-login.webp" alt="Kiara at her desk" />
       <div className="login-art-tint" />
       <Brand light />
       <p>Every meaningful connection<br />starts with a hello.</p>
@@ -309,23 +647,14 @@ function AdminLogin({ onLogin, onRegister, initialError, darkMode, onToggleTheme
       <button className="theme-toggle login-theme-toggle" type="button" onClick={onToggleTheme} aria-pressed={darkMode}>
         <span aria-hidden="true">{darkMode ? '☀' : '☾'}</span>{darkMode ? 'Light mode' : 'Dark mode'}
       </button>
-      <a className="back-link" href="/">← Back to Kiara</a><div className="login-form-content"><p className="eyebrow"><span className="eyebrow-line" /> SECURE ADMIN ACCESS</p><h1>{registering ? <>Create your<br /><em>account.</em></> : <>Welcome<br /><em>back.</em></>}</h1><p className="login-copy">{registering ? 'Register the first admin account. The server allows this only while no admin account exists.' : 'Sign in with the email and password provisioned for your admin account.'}</p>
+      <a className="back-link" href="/">← Back to Kiara</a><div className="login-form-content"><p className="eyebrow"><span className="eyebrow-line" /> SECURE ADMIN ACCESS</p><h1>Welcome<br /><em>back.</em></h1><p className="login-copy">Sign in with the email and password provisioned for your admin account.</p>
         {error && <p className="form-error">{error}</p>}
-        {notice && <p className="form-success" role="status">{notice}</p>}
-        {registering && <>
-          <label className="login-field">First name
-            <input type="text" name="given-name" autoComplete="given-name" maxLength={80} required value={firstName} onChange={(event) => setFirstName(event.target.value)} />
-          </label>
-          <label className="login-field">Last name
-            <input type="text" name="family-name" autoComplete="family-name" maxLength={80} required value={lastName} onChange={(event) => setLastName(event.target.value)} />
-          </label>
-        </>}
         <label className="login-field">Admin email
           <input type="email" name="email" autoComplete="username" required value={email} onChange={(event) => setEmail(event.target.value)} />
         </label>
         <label className="login-field">Password
           <span className="password-input-wrap">
-            <input type={showPassword ? 'text' : 'password'} name="password" autoComplete={registering ? 'new-password' : 'current-password'} minLength={registering ? 12 : undefined} required value={password} onChange={(event) => setPassword(event.target.value)} />
+            <input type={showPassword ? 'text' : 'password'} name="password" autoComplete="current-password" required value={password} onChange={(event) => setPassword(event.target.value)} />
             <button
               className="password-visibility-toggle"
               type="button"
@@ -337,9 +666,8 @@ function AdminLogin({ onLogin, onRegister, initialError, darkMode, onToggleTheme
             </button>
           </span>
         </label>
-        <button className="button button-primary login-submit" disabled={busy}>{busy ? registering ? 'Creating account…' : 'Signing in…' : registering ? 'Create first admin account' : 'Sign in to admin'}</button>
-        <button className="login-mode-toggle" type="button" disabled={busy} onClick={() => { setRegistering((current) => !current); setError(''); setNotice(''); }}>{registering ? 'Already have an admin account? Sign in' : 'First admin? Create an account'}</button>
-        <p className="secure-note">{registering ? 'Only the first admin can register without a server registration key. Further admin accounts require the key.' : 'Only active admin or developer accounts can sign in. Regular user accounts cannot access the admin panel.'}</p>
+        <button className="button button-primary login-submit" disabled={busy}>{busy ? 'Signing in…' : 'Sign in to admin'}</button>
+        <p className="secure-note">Admin accounts are created by the system administrator through a private provisioning request. If you need access, contact the Kiara administrator. Regular user accounts cannot access this panel.</p>
       </div>
     </form>
   </main>;
@@ -350,7 +678,10 @@ function MetricCard({ label, value, note, icon }: { label: string; value: string
 }
 
 function AdminApp() {
-  const [darkMode, setDarkMode] = useState(() => localStorage.getItem('kiara_admin_theme') === 'dark');
+  const [darkMode, setDarkMode] = useState(() => {
+    const storedTheme = localStorage.getItem('kiara-theme') ?? localStorage.getItem('kiara_admin_theme');
+    return storedTheme === 'dark' || (storedTheme !== 'light' && getPreferredTheme() === 'dark');
+  });
   const [authenticated, setAuthenticated] = useState(Boolean(localStorage.getItem(ACCESS_TOKEN_KEY)));
   const [role, setRole] = useState<'admin' | 'dev' | null>(null);
   const [section, setSection] = useState<AdminSection>('overview');
@@ -372,7 +703,7 @@ function AdminApp() {
   function toggleTheme() {
     setDarkMode((current) => {
       const next = !current;
-      localStorage.setItem('kiara_admin_theme', next ? 'dark' : 'light');
+      applyTheme(next ? 'dark' : 'light');
       return next;
     });
   }
@@ -439,18 +770,6 @@ function AdminApp() {
     } catch (cause) {
       localStorage.removeItem(ACCESS_TOKEN_KEY);
       throw cause;
-    }
-  }
-
-  async function registerFirstAdmin(firstName: string, lastName: string, email: string, password: string) {
-    const response = await fetch(`${API_BASE}/api/admin/auth/register`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ firstName, lastName, email, password }),
-    });
-    const payload = await response.json().catch(() => ({})) as { success?: boolean; message?: string };
-    if (!response.ok || payload.success === false) {
-      throw new Error(payload.message || `Registration failed (${response.status}).`);
     }
   }
 
@@ -562,7 +881,7 @@ function AdminApp() {
   if (authenticated && !role) {
     return <main className="login-check" role="status">Checking admin access…</main>;
   }
-  if (!authenticated) return <AdminLogin onLogin={loginWithPassword} onRegister={registerFirstAdmin} initialError={error} darkMode={darkMode} onToggleTheme={toggleTheme} />;
+  if (!authenticated) return <AdminLogin onLogin={loginWithPassword} initialError={error} darkMode={darkMode} onToggleTheme={toggleTheme} />;
 
   const sections: { id: AdminSection; label: string; icon: string }[] = [
     { id: 'overview', label: 'Overview', icon: '◫' },
@@ -687,9 +1006,45 @@ function EmptyState({ title, detail }: { title: string; detail: string }) {
   return <div className="empty-state"><span>✧</span><strong>{title}</strong><p>{detail}</p></div>;
 }
 
+function PublicRoutes() {
+  return <Routes>
+    <Route path="/" element={<HomePage />} />
+    <Route path="/features" element={<FeaturesPage />} />
+    <Route path="/download" element={<DownloadPage />} />
+    <Route path="/about" element={<AboutPage />} />
+    <Route path="/docs" element={<DocsPage />} />
+    <Route path="/faq" element={<FaqPage />} />
+    <Route path="/privacy" element={<PolicyPage />} />
+    <Route path="/terms" element={<TermsPage />} />
+    <Route path="/contact" element={<ContactPage />} />
+    <Route path="*" element={<HomePage />} />
+  </Routes>;
+}
+
 export default function App() {
-  const isAdmin = window.location.pathname.replace(/\/+$/, '') === '/admin';
-  return isAdmin ? <AdminApp /> : <HomePage />;
+  return <BrowserRouter>
+    <AppShell />
+  </BrowserRouter>;
+}
+
+export function PrerenderedPage({ path }: { path: string }) {
+  return <MemoryRouter initialEntries={[path]}>
+    <AppShell />
+  </MemoryRouter>;
+}
+
+function AppShell() {
+  const location = useLocation();
+  const isAdmin = location.pathname.replace(/\/+$/, '') === '/admin' || location.pathname.startsWith('/admin/');
+  useEffect(() => {
+    if (!isAdmin) return;
+
+    document.title = 'Admin sign in | Kiara AI';
+    setDocumentMeta('robots', 'noindex,nofollow');
+    document.head.querySelector('link[rel="canonical"]')?.remove();
+  }, [isAdmin]);
+
+  return isAdmin ? <AdminApp /> : <PublicRoutes />;
 }
 
 function formDataForApk(file: File): FormData {

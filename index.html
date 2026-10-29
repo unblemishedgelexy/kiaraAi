@@ -5,61 +5,33 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="theme-color" content="#101019" />
+    <meta name="robots" content="index,follow,max-image-preview:large" />
 
-    <title>Kiara AI — Your Personal Desktop AI Assistant</title>
+    <title>Kiara AI | Android companion for conversation and reflection</title>
 
-    <meta
-      name="description"
-      content="Discover Kiara AI, a personal desktop AI assistant designed for natural voice conversations, contextual memory, and desktop automation."
-    />
+    <meta name="description" content="Meet Kiara, an Android AI companion for everyday text and voice conversations, clearer self-expression, and personal reflection." />
 
     <meta name="application-name" content="Kiara AI" />
     <meta name="author" content="Kiara AI" />
 
     <link rel="canonical" href="https://kiaraai.in/" />
+    <link rel="manifest" href="/site.webmanifest" />
 
     <meta property="og:type" content="website" />
     <meta property="og:site_name" content="Kiara AI" />
-    <meta
-      property="og:title"
-      content="Kiara AI — Your Personal Desktop AI Assistant"
-    />
-    <meta
-      property="og:description"
-      content="Meet Kiara AI, a desktop assistant for voice conversations, contextual memory, and automation."
-    />
+    <meta property="og:title" content="Kiara AI | Android companion for conversation and reflection" />
+    <meta property="og:description" content="Meet Kiara, an Android AI companion for everyday text and voice conversations, clearer self-expression, and personal reflection." />
     <meta property="og:url" content="https://kiaraai.in/" />
-    <meta
-      property="og:image"
-      content="https://kiaraai.in/images/kiara-logo.svg"
-    />
+    <meta property="og:image" content="https://kiaraai.in/images/kiara_landing.webp" />
+    <meta property="og:image:alt" content="Kiara AI companion artwork" />
 
     <meta name="twitter:card" content="summary_large_image" />
-    <meta
-      name="twitter:title"
-      content="Kiara AI — Your Personal Desktop AI Assistant"
-    />
-    <meta
-      name="twitter:description"
-      content="Discover Kiara AI for voice conversations, contextual memory, and desktop automation."
-    />
-    <meta
-      name="twitter:image"
-      content="https://kiaraai.in/images/kiara-logo.svg"
-    />
+    <meta name="twitter:title" content="Kiara AI | Android companion for conversation and reflection" />
+    <meta name="twitter:description" content="Meet Kiara, an Android AI companion for everyday text and voice conversations, clearer self-expression, and personal reflection." />
+    <meta name="twitter:image" content="https://kiaraai.in/images/kiara_landing.webp" />
 
-    <script type="application/ld+json">
-      {
-        "@context": "https://schema.org",
-        "@type": "WebSite",
-        "name": "Kiara AI",
-        "alternateName": "Kiara AI Desktop Assistant",
-        "url": "https://kiaraai.in/"
-      }
-    </script>
-
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg?v=2" />
-    <link rel="shortcut icon" href="/favicon.svg?v=2" />
+    <link rel="icon" type="image/png" sizes="256x256" href="/favicon-256.png" />
+    <link rel="apple-touch-icon" sizes="256x256" href="/favicon-256.png" />
 
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -71,6 +43,21 @@
   </head>
 
   <body>
+    <script>
+      (function () {
+        try {
+          const saved = localStorage.getItem('kiara-theme');
+          const preferred = saved === 'dark' || saved === 'light'
+            ? saved
+            : (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+          document.documentElement.dataset.theme = preferred;
+          document.documentElement.style.colorScheme = preferred;
+        } catch (error) {
+          document.documentElement.dataset.theme = 'dark';
+          document.documentElement.style.colorScheme = 'dark';
+        }
+      })();
+    </script>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>

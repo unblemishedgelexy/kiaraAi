@@ -1,0 +1,12 @@
+{
+  "name": "Kiara AI",
+  "short_name": "Kiara",
+  "description": "An Android AI companion for everyday text and voice conversations, clearer self-expression, and personal reflection.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#101019",
+  "theme_color": "#101019",
+  "icons": [
+    { "src": "/favicon-256.png", "sizes": "256x256", "type": "image/png" }
+  ]
+}
